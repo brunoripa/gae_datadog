@@ -9,7 +9,7 @@ import simplejson as json
 
 # google api
 from google.appengine.api import app_identity, logservice, memcache, taskqueue
-from google.appengine.ext.db import stats as db_stats
+from google.appengine.ext.ndb import stats as db_stats
 
 # framework
 import webapp2
@@ -31,7 +31,8 @@ class DatadogStats(webapp2.RequestHandler):
                 queues = ['default']
             else:
                 queues = queues.split(',')
-            task_queues = [taskqueue.Queue(q).fetch_statistics() for q in queues]
+            task_queues = [taskqueue.Queue(q).fetch_statistics() for q in
+                           queues] 
             q_stats = []
             for q in task_queues:
                 stats = {
@@ -71,12 +72,25 @@ class DatadogStats(webapp2.RequestHandler):
             'project_name': app_identity.get_application_id()
         }
         if flavor == 'services' or flavor == 'all':
-            stats['datastore'] = db_stats.GlobalStat.all().get()
+            datastore_stats = db_stats.GlobalStat.query().get()
+            if datastore_stats:
+                datastore_stats = datastore_stats.to_dict()
+                # Converting timestamps to string
+                datastore_stats.update({
+                    "timestamp": str(datastore_stats["timestamp"])
+                })
+
+            else:
+                datastore_stats = {}
+
+            stats['datastore'] = datastore_stats
             stats['memcache'] = memcache.get_stats()
-            stats['task_queue'] = get_task_queue_stats(self.request.get('task_queues', None))
+            stats['task_queue'] = get_task_queue_stats(self.request.get(
+                'task_queues', None))
 
         if flavor == 'requests' or flavor == 'all':
-            stats['requests'] = get_request_stats(self.request.get('after', None))
+            stats['requests'] = get_request_stats(self.request.get('after',
+                                                                   None))
 
         self.response.headers['Content-Type'] = 'application/json'
         self.response.write(json.dumps(stats))
